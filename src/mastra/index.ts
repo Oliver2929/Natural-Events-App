@@ -28,18 +28,10 @@ export function startServer() {
 
   app.use("/", createA2ARoute(mastra));
 
-  const port = process.env.PORT || 3000;
-  app.listen(port, () =>
+  const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+  app.listen(port, "0.0.0.0", () =>
     console.log(`✅ Mastra A2A server running on http://localhost:${port}`)
   );
 }
 
-import { fileURLToPath } from "url";
-import { dirname, resolve } from "path";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-if (process.argv[1] === resolve(__dirname, "index.js")) {
-  startServer();
-}
+startServer();
