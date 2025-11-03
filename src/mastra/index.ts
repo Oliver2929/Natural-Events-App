@@ -15,7 +15,7 @@ export const mastra = new Mastra({
   logger: new PinoLogger({ name: "MastraEarthquake", level: "debug" }),
   server: { build: { openAPIDocs: false, swaggerUI: false }, apiRoutes: [] },
   bundler: {
-    externals: ["express"],
+    externals: ["express", "body-parser", "dotenv"],
   },
 });
 
