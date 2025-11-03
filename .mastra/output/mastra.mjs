@@ -83640,16 +83640,12 @@ function startServer() {
   app.get("/", (req, res) => res.send("Server is running"));
   app.use(bodyParser.json());
   app.use("/", createA2ARoute(mastra));
-  const port = process.env.PORT ? Number(process.env.PORT) : 4112;
-  const server = app.listen(port, "0.0.0.0", () => console.log(`\u2705 Mastra A2A server running on http://localhost:${port}`));
-  server.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.error(`\u274C Port ${port} is already in use.`);
-      process.exit(1);
-    } else {
-      throw err;
-    }
-  });
+  const port = Number(process.env.PORT);
+  if (!port) {
+    console.error(" PORT environment variable is missing!");
+    process.exit(1);
+  }
+  app.listen(port, "0.0.0.0", () => console.log(`\u2705 Mastra A2A server running on port ${port}`));
 }
 startServer();
 
