@@ -28,10 +28,20 @@ export function startServer() {
 
   app.use("/", createA2ARoute(mastra));
 
-  const port = process.env.PORT ? Number(process.env.PORT) : 3000;
-  app.listen(port, "0.0.0.0", () =>
+  const port = process.env.PORT ? Number(process.env.PORT) : 4112;
+
+  const server = app.listen(port, "0.0.0.0", () =>
     console.log(`✅ Mastra A2A server running on http://localhost:${port}`)
   );
+
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`❌ Port ${port} is already in use.`);
+      process.exit(1);
+    } else {
+      throw err;
+    }
+  });
 }
 
 startServer();
