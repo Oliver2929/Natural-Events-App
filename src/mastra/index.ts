@@ -4,8 +4,8 @@ import dotenv from "dotenv";
 import { Mastra } from "@mastra/core/mastra";
 import { PinoLogger } from "@mastra/loggers";
 import { LibSQLStore } from "@mastra/libsql";
-import { earthquakeAgent } from "./agent/earthquake-agent.js";
-import { createA2ARoute } from "./server/a2a-route.js";
+import { earthquakeAgent } from "../agent/earthquake-agent";
+import { createA2ARoute } from "../server/a2a-route";
 
 dotenv.config();
 
