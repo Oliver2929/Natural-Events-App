@@ -1,28 +1,36 @@
+import { registerApiRoute } from "@mastra/core/server";
 import { randomUUID } from "crypto";
-import express from "express";
-import type { Request, Response } from "express";
 
-export function createA2ARoute(mastra: any) {
-  const router = express.Router();
-
-  router.post("/a2a/agent/:agentId", async (req: Request, res: Response) => {
+export const a2aAgentRoute = registerApiRoute("/a2a/agent/:agentId", {
+  method: "POST",
+  handler: async (c) => {
     try {
-      const { jsonrpc, id: requestId, params } = req.body || {};
-      if (jsonrpc !== "2.0" || !requestId)
-        return res.status(400).json({
-          jsonrpc: "2.0",
-          id: requestId || null,
-          error: { code: -32600, message: "Invalid JSON-RPC request" },
-        });
+      const mastra = c.get("mastra");
+      const agentId = c.req.param("agentId");
+      const { jsonrpc, id: requestId, params } = await c.req.json();
 
-      const { agentId } = req.params;
+      if (jsonrpc !== "2.0" || !requestId) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            id: requestId || null,
+            error: { code: -32600, message: "Invalid JSON-RPC request" },
+          },
+          400
+        );
+      }
+
       const agent = mastra.getAgent(agentId);
-      if (!agent)
-        return res.status(404).json({
-          jsonrpc: "2.0",
-          id: requestId,
-          error: { code: -32602, message: `Agent '${agentId}' not found` },
-        });
+      if (!agent) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            id: requestId,
+            error: { code: -32602, message: `Agent '${agentId}' not found` },
+          },
+          404
+        );
+      }
 
       const messagesList = params?.messages || [];
       const mastraMessages = messagesList.map((msg: any) => ({
@@ -51,12 +59,11 @@ export function createA2ARoute(mastra: any) {
           artifactId: randomUUID(),
           name: "ToolResults",
           parts: response.toolResults.map((r: any) => ({
-            kind: "data",
-            data: r,
+            kind: "text",
+            text: JSON.stringify(r),
           })),
         });
       }
-
       const history = [
         ...messagesList,
         {
@@ -67,7 +74,7 @@ export function createA2ARoute(mastra: any) {
         },
       ];
 
-      return res.json({
+      return c.json({
         jsonrpc: "2.0",
         id: requestId,
         result: {
@@ -87,17 +94,18 @@ export function createA2ARoute(mastra: any) {
         },
       });
     } catch (err: any) {
-      res.status(500).json({
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: -32603,
-          message: "Internal error",
-          data: { details: err.message },
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32603,
+            message: "Internal error",
+            data: { details: err.message },
+          },
         },
-      });
+        500
+      );
     }
-  });
-
-  return router;
-}
+  },
+});
