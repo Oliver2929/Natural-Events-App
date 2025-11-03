@@ -1,15 +1,39 @@
+import express from "express";
+import bodyParser from "body-parser";
+import dotenv from "dotenv";
 import { Mastra } from "@mastra/core/mastra";
 import { PinoLogger } from "@mastra/loggers";
 import { LibSQLStore } from "@mastra/libsql";
 import { earthquakeAgent } from "../agent/earthquake-agent.js";
-import { a2aAgentRoute } from "../server/a2a-route.js";
+import { createA2ARoute } from "../server/a2a-route.js";
+
+dotenv.config();
 
 export const mastra = new Mastra({
   agents: { earthquakeAgent },
   storage: new LibSQLStore({ url: ":memory:" }),
   logger: new PinoLogger({ name: "MastraEarthquake", level: "debug" }),
-  server: {
-    build: { openAPIDocs: false, swaggerUI: false },
-    apiRoutes: [a2aAgentRoute],
-  },
+  server: { build: { openAPIDocs: false, swaggerUI: false }, apiRoutes: [] },
 });
+
+export function startServer() {
+  const app = express();
+  app.use(bodyParser.json());
+
+  app.use("/", createA2ARoute(mastra));
+
+  const port = process.env.PORT || 3000;
+  app.listen(port, () =>
+    console.log(`✅ Mastra A2A server running on http://localhost:${port}`)
+  );
+}
+
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+if (process.argv[1] === resolve(__dirname, "index.js")) {
+  startServer();
+}
