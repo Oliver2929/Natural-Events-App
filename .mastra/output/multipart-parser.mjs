@@ -1,7 +1,4 @@
 import { F as FormData, a as File } from './mastra.mjs';
-import 'express';
-import 'body-parser';
-import 'dotenv';
 import 'stream/web';
 import 'crypto';
 import 'fs';

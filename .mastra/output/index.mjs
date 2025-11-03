@@ -15,9 +15,6 @@ import { spawn as spawn$1, execFile as execFile$1, exec as exec$1 } from 'child_
 import { createRequire } from 'module';
 import { tmpdir } from 'os';
 import { tools } from './tools.mjs';
-import 'express';
-import 'body-parser';
-import 'dotenv';
 import 'events';
 import 'pino';
 import 'pino-pretty';

@@ -3,9 +3,6 @@ import { registerHook, AvailableHooks } from '@mastra/core/hooks';
 import { TABLE_EVALS } from '@mastra/core/storage';
 import { scoreTraces, scoreTracesWorkflow } from '@mastra/core/scores/scoreTraces';
 import { generateEmptyFromSchema, checkEvalStorageFields } from '@mastra/core/utils';
-import express from 'express';
-import bodyParser from 'body-parser';
-import dotenv from 'dotenv';
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { LibSQLStore } from '@mastra/libsql';
@@ -14,6 +11,7 @@ import { Memory as Memory$1 } from '@mastra/memory';
 import fetch$1 from 'node-fetch';
 import { createTool, isVercelTool, Tool } from '@mastra/core/tools';
 import { z, ZodObject, ZodFirstPartyTypeKind } from 'zod';
+import { registerApiRoute } from '@mastra/core/server';
 import crypto$1, { randomUUID } from 'crypto';
 import { readdir, readFile, mkdtemp, rm, writeFile, mkdir, copyFile, stat } from 'fs/promises';
 import * as https from 'https';
@@ -112,31 +110,55 @@ When replying:
   })
 });
 
-function createA2ARoute(mastra) {
-  const router = express.Router();
-  router.post("/a2a/agent/:agentId", async (req, res) => {
+const createA2ARoute = registerApiRoute("/a2a/agent/:agentId", {
+  method: "POST",
+  handler: async (c) => {
     try {
-      const { jsonrpc, id: requestId, params } = req.body || {};
-      if (jsonrpc !== "2.0" || !requestId)
-        return res.status(400).json({
-          jsonrpc: "2.0",
-          id: requestId || null,
-          error: { code: -32600, message: "Invalid JSON-RPC request" }
-        });
-      const { agentId } = req.params;
+      const mastra = c.get("mastra");
+      const agentId = c.req.param("agentId");
+      const body = await c.req.json();
+      const { jsonrpc, id: requestId, params } = body;
+      if (jsonrpc !== "2.0" || !requestId) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            id: requestId || null,
+            error: {
+              code: -32600,
+              message: 'Invalid Request: jsonrpc must be "2.0" and id is required'
+            }
+          },
+          400
+        );
+      }
       const agent = mastra.getAgent(agentId);
-      if (!agent)
-        return res.status(404).json({
-          jsonrpc: "2.0",
-          id: requestId,
-          error: { code: -32602, message: `Agent '${agentId}' not found` }
-        });
-      const messagesList = params?.messages || [];
+      if (!agent) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            id: requestId,
+            error: {
+              code: -32602,
+              message: `Agent '${agentId}' not found`
+            }
+          },
+          404
+        );
+      }
+      const { message, messages, contextId, taskId} = params || {};
+      let messagesList = [];
+      if (message) {
+        messagesList = [message];
+      } else if (messages && Array.isArray(messages)) {
+        messagesList = messages;
+      }
       const mastraMessages = messagesList.map((msg) => ({
         role: msg.role,
-        content: msg.parts?.map(
-          (p) => p.kind === "text" ? p.text : JSON.stringify(p.data)
-        ).join("\n") || ""
+        content: msg.parts?.map((part) => {
+          if (part.kind === "text") return part.text;
+          if (part.kind === "data") return JSON.stringify(part.data);
+          return "";
+        }).join("\n") || ""
       }));
       const response = await agent.generate(mastraMessages);
       const agentText = response.text || "";
@@ -147,37 +169,46 @@ function createA2ARoute(mastra) {
           parts: [{ kind: "text", text: agentText }]
         }
       ];
-      if (response.toolResults?.length) {
+      if (response.toolResults && response.toolResults.length > 0) {
         artifacts.push({
           artifactId: randomUUID(),
           name: "ToolResults",
-          parts: response.toolResults.map((r) => ({
-            kind: "data",
-            data: r
+          parts: response.toolResults.map((result) => ({
+            kind: "text",
+            text: JSON.stringify(result)
           }))
         });
       }
       const history = [
-        ...messagesList,
+        ...messagesList.map((msg) => ({
+          kind: "message",
+          role: msg.role,
+          parts: msg.parts,
+          messageId: msg.messageId || randomUUID(),
+          taskId: msg.taskId || taskId || randomUUID()
+        })),
         {
           kind: "message",
           role: "agent",
           parts: [{ kind: "text", text: agentText }],
-          messageId: randomUUID()
+          messageId: randomUUID(),
+          taskId: taskId || randomUUID()
         }
       ];
-      return res.json({
+      return c.json({
         jsonrpc: "2.0",
         id: requestId,
         result: {
-          id: randomUUID(),
-          contextId: randomUUID(),
+          id: taskId || randomUUID(),
+          contextId: contextId || randomUUID(),
           status: {
             state: "completed",
             timestamp: (/* @__PURE__ */ new Date()).toISOString(),
             message: {
+              messageId: randomUUID(),
               role: "agent",
-              parts: [{ kind: "text", text: agentText }]
+              parts: [{ kind: "text", text: agentText }],
+              kind: "message"
             }
           },
           artifacts,
@@ -185,42 +216,37 @@ function createA2ARoute(mastra) {
           kind: "task"
         }
       });
-    } catch (err) {
-      res.status(500).json({
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: -32603,
-          message: "Internal error",
-          data: { details: err.message }
-        }
-      });
+    } catch (error) {
+      const e = error;
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32603,
+            message: "Internal error",
+            data: { details: e.message }
+          }
+        },
+        500
+      );
     }
-  });
-  return router;
-}
+  }
+});
 
-dotenv.config();
 const mastra = new Mastra({
   agents: { earthquakeAgent },
   storage: new LibSQLStore({ url: ":memory:" }),
   logger: new PinoLogger({ name: "MastraEarthquake", level: "debug" }),
-  server: { build: { openAPIDocs: false, swaggerUI: false }, apiRoutes: [] },
+  observability: {
+    default: { enabled: true }
+  },
+  server: {
+    build: { openAPIDocs: false, swaggerUI: false },
+    apiRoutes: [createA2ARoute]
+  },
   bundler: { externals: ["express", "body-parser", "dotenv"] }
 });
-function startServer() {
-  const app = express();
-  app.get("/", (req, res) => res.send("Server is running"));
-  app.use(bodyParser.json());
-  app.use("/", createA2ARoute(mastra));
-  const port = Number(process.env.PORT) || 4112;
-  app.listen(
-    port,
-    "0.0.0.0",
-    () => console.log(`\u2705 Mastra A2A server running on port ${port}`)
-  );
-}
-startServer();
 
 // src/server/a2a/store.ts
 var InMemoryTaskStore = class {

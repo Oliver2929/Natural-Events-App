@@ -1,6 +1,3 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import dotenv from 'dotenv';
 import { WritableStream as WritableStream$1, TransformStream as TransformStream$1, ReadableStream as ReadableStream$1 } from 'stream/web';
 import { createHash, randomUUID } from 'crypto';
 import fs from 'fs';
@@ -83524,31 +83521,103 @@ When replying:
   })
 });
 
-function createA2ARoute(mastra) {
-  const router = express.Router();
-  router.post("/a2a/agent/:agentId", async (req, res) => {
+// src/server/index.ts
+function validateOptions(path, options) {
+  const opts = options;
+  if (opts.method === void 0) {
+    throw new MastraError({
+      id: "MASTRA_SERVER_API_INVALID_ROUTE_OPTIONS",
+      text: `Invalid options for route "${path}", missing "method" property`,
+      domain: "MASTRA_SERVER" /* MASTRA_SERVER */,
+      category: "USER" /* USER */
+    });
+  }
+  if (opts.handler === void 0 && opts.createHandler === void 0) {
+    throw new MastraError({
+      id: "MASTRA_SERVER_API_INVALID_ROUTE_OPTIONS",
+      text: `Invalid options for route "${path}", you must define a "handler" or "createHandler" property`,
+      domain: "MASTRA_SERVER" /* MASTRA_SERVER */,
+      category: "USER" /* USER */
+    });
+  }
+  if (opts.handler !== void 0 && opts.createHandler !== void 0) {
+    throw new MastraError({
+      id: "MASTRA_SERVER_API_INVALID_ROUTE_OPTIONS",
+      text: `Invalid options for route "${path}", you can only define one of the following properties: "handler" or "createHandler"`,
+      domain: "MASTRA_SERVER" /* MASTRA_SERVER */,
+      category: "USER" /* USER */
+    });
+  }
+}
+function registerApiRoute(path, options) {
+  if (path.startsWith("/api/")) {
+    throw new MastraError({
+      id: "MASTRA_SERVER_API_PATH_RESERVED",
+      text: `Path must not start with "/api", it's reserved for internal API routes`,
+      domain: "MASTRA_SERVER" /* MASTRA_SERVER */,
+      category: "USER" /* USER */
+    });
+  }
+  validateOptions(path, options);
+  return {
+    path,
+    method: options.method,
+    handler: options.handler,
+    createHandler: options.createHandler,
+    openapi: options.openapi,
+    middleware: options.middleware
+  };
+}
+
+const createA2ARoute = registerApiRoute("/a2a/agent/:agentId", {
+  method: "POST",
+  handler: async (c) => {
     try {
-      const { jsonrpc, id: requestId, params } = req.body || {};
-      if (jsonrpc !== "2.0" || !requestId)
-        return res.status(400).json({
-          jsonrpc: "2.0",
-          id: requestId || null,
-          error: { code: -32600, message: "Invalid JSON-RPC request" }
-        });
-      const { agentId } = req.params;
+      const mastra = c.get("mastra");
+      const agentId = c.req.param("agentId");
+      const body = await c.req.json();
+      const { jsonrpc, id: requestId, params } = body;
+      if (jsonrpc !== "2.0" || !requestId) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            id: requestId || null,
+            error: {
+              code: -32600,
+              message: 'Invalid Request: jsonrpc must be "2.0" and id is required'
+            }
+          },
+          400
+        );
+      }
       const agent = mastra.getAgent(agentId);
-      if (!agent)
-        return res.status(404).json({
-          jsonrpc: "2.0",
-          id: requestId,
-          error: { code: -32602, message: `Agent '${agentId}' not found` }
-        });
-      const messagesList = params?.messages || [];
+      if (!agent) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            id: requestId,
+            error: {
+              code: -32602,
+              message: `Agent '${agentId}' not found`
+            }
+          },
+          404
+        );
+      }
+      const { message, messages, contextId, taskId} = params || {};
+      let messagesList = [];
+      if (message) {
+        messagesList = [message];
+      } else if (messages && Array.isArray(messages)) {
+        messagesList = messages;
+      }
       const mastraMessages = messagesList.map((msg) => ({
         role: msg.role,
-        content: msg.parts?.map(
-          (p) => p.kind === "text" ? p.text : JSON.stringify(p.data)
-        ).join("\n") || ""
+        content: msg.parts?.map((part) => {
+          if (part.kind === "text") return part.text;
+          if (part.kind === "data") return JSON.stringify(part.data);
+          return "";
+        }).join("\n") || ""
       }));
       const response = await agent.generate(mastraMessages);
       const agentText = response.text || "";
@@ -83559,37 +83628,46 @@ function createA2ARoute(mastra) {
           parts: [{ kind: "text", text: agentText }]
         }
       ];
-      if (response.toolResults?.length) {
+      if (response.toolResults && response.toolResults.length > 0) {
         artifacts.push({
           artifactId: randomUUID(),
           name: "ToolResults",
-          parts: response.toolResults.map((r) => ({
-            kind: "data",
-            data: r
+          parts: response.toolResults.map((result) => ({
+            kind: "text",
+            text: JSON.stringify(result)
           }))
         });
       }
       const history = [
-        ...messagesList,
+        ...messagesList.map((msg) => ({
+          kind: "message",
+          role: msg.role,
+          parts: msg.parts,
+          messageId: msg.messageId || randomUUID(),
+          taskId: msg.taskId || taskId || randomUUID()
+        })),
         {
           kind: "message",
           role: "agent",
           parts: [{ kind: "text", text: agentText }],
-          messageId: randomUUID()
+          messageId: randomUUID(),
+          taskId: taskId || randomUUID()
         }
       ];
-      return res.json({
+      return c.json({
         jsonrpc: "2.0",
         id: requestId,
         result: {
-          id: randomUUID(),
-          contextId: randomUUID(),
+          id: taskId || randomUUID(),
+          contextId: contextId || randomUUID(),
           status: {
             state: "completed",
             timestamp: (/* @__PURE__ */ new Date()).toISOString(),
             message: {
+              messageId: randomUUID(),
               role: "agent",
-              parts: [{ kind: "text", text: agentText }]
+              parts: [{ kind: "text", text: agentText }],
+              kind: "message"
             }
           },
           artifacts,
@@ -83597,22 +83675,24 @@ function createA2ARoute(mastra) {
           kind: "task"
         }
       });
-    } catch (err) {
-      res.status(500).json({
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: -32603,
-          message: "Internal error",
-          data: { details: err.message }
-        }
-      });
+    } catch (error) {
+      const e = error;
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32603,
+            message: "Internal error",
+            data: { details: e.message }
+          }
+        },
+        500
+      );
     }
-  });
-  return router;
-}
+  }
+});
 
-dotenv.config();
 const mastra = new Mastra({
   agents: {
     earthquakeAgent
@@ -83624,25 +83704,18 @@ const mastra = new Mastra({
     name: "MastraEarthquake",
     level: "debug"
   }),
+  observability: {
+    default: {
+      enabled: true
+    }
+  },
   server: {
     build: {
       openAPIDocs: false,
       swaggerUI: false
     },
-    apiRoutes: []
-  },
-  bundler: {
-    externals: ["express", "body-parser", "dotenv"]
+    apiRoutes: [createA2ARoute]
   }
 });
-function startServer() {
-  const app = express();
-  app.get("/", (req, res) => res.send("Server is running"));
-  app.use(bodyParser.json());
-  app.use("/", createA2ARoute(mastra));
-  const port = Number(process.env.PORT) || 4112;
-  app.listen(port, "0.0.0.0", () => console.log(`\u2705 Mastra A2A server running on port ${port}`));
-}
-startServer();
 
 export { Agent as A, Telemetry as B, getProviderConfig as C, ErrorDomain as D, ErrorCategory as E, FormData$1 as F, ChunkFrom as G, getErrorFromUnknown as H, AISpanType as I, mastra as J, registerHook as K, AvailableHooks as L, MastraError as M, checkEvalStorageFields as N, TABLE_EVALS as O, PROVIDER_REGISTRY as P, RuntimeContext as R, Tool as T, ZodObject$1 as Z, File$1 as a, createStep as b, createWorkflow as c, convertMessages as d, executeHook as e, zodToJsonSchema$5 as f, getDefaultExportFromCjs as g, createWorkflow$1 as h, createStep$1 as i, createTool as j, tryGenerateWithJsonFallback as k, tryStreamWithJsonFallback as l, ModelRouterLanguageModel as m, MastraMemory as n, MessageList as o, pMap as p, generateEmptyFromSchema as q, MemoryProcessor as r, saveScorePayloadSchema as s, tokenError as t, z as u, ZodFirstPartyTypeKind as v, toJSONSchema as w, safeParseAsync as x, isVercelTool as y, z$1 as z };

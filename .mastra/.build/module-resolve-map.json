@@ -1,18 +1,10 @@
 {
-  "C:\\Users\\USER\\earthquake-agent-telex\\.mastra\\.build\\express.mjs": {
-    "typescript": "\u0000virtual:#virtual-dotenv",
-    "express": "\u0000virtual:#virtual-dotenv",
-    "body-parser": "\u0000virtual:#virtual-dotenv",
-    "dotenv": "\u0000virtual:#virtual-dotenv"
-  },
+  "C:\\Users\\USER\\earthquake-agent-telex\\.mastra\\.build\\typescript.mjs": {},
   "C:\\Users\\USER\\earthquake-agent-telex\\.mastra\\.build\\@mastra-loggers.mjs": {
     "pino": "C:\\Users\\USER\\earthquake-agent-telex\\node_modules\\@mastra\\loggers\\dist\\index.js",
     "pino-pretty": "C:\\Users\\USER\\earthquake-agent-telex\\node_modules\\@mastra\\loggers\\dist\\index.js"
   },
   "C:\\Users\\USER\\earthquake-agent-telex\\.mastra\\.build\\@mastra-libsql.mjs": {
     "@libsql/client": "C:\\Users\\USER\\earthquake-agent-telex\\node_modules\\@mastra\\libsql\\dist\\index.js"
-  },
-  "C:\\Users\\USER\\earthquake-agent-telex\\.mastra\\.build\\body-parser.mjs": {},
-  "C:\\Users\\USER\\earthquake-agent-telex\\.mastra\\.build\\dotenv.mjs": {},
-  "C:\\Users\\USER\\earthquake-agent-telex\\.mastra\\.build\\typescript.mjs": {}
+  }
 }
