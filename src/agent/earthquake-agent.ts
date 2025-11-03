@@ -16,6 +16,6 @@ When replying:
   model: "google/gemini-2.0-flash",
   tools: { usgsEarthquakeTool },
   memory: new Memory({
-    storage: new LibSQLStore({ url: "file:./mastra-earthquake.db" }),
+    storage: new LibSQLStore({ url: ":memory:" }),
   }),
 });
