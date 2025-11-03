@@ -14,6 +14,9 @@ export const mastra = new Mastra({
   storage: new LibSQLStore({ url: ":memory:" }),
   logger: new PinoLogger({ name: "MastraEarthquake", level: "debug" }),
   server: { build: { openAPIDocs: false, swaggerUI: false }, apiRoutes: [] },
+  bundler: {
+    externals: ["express"],
+  },
 });
 
 export function startServer() {
