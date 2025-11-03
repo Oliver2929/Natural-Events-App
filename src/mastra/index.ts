@@ -25,11 +25,7 @@ export function startServer() {
   app.use(bodyParser.json());
   app.use("/", createA2ARoute(mastra));
 
-  const port = Number(process.env.PORT);
-  if (!port) {
-    console.error(" PORT environment variable is missing!");
-    process.exit(1);
-  }
+  const port = Number(process.env.PORT) || 4112;
 
   app.listen(port, "0.0.0.0", () =>
     console.log(`✅ Mastra A2A server running on port ${port}`)
