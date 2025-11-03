@@ -21,6 +21,9 @@ export const mastra = new Mastra({
 
 export function startServer() {
   const app = express();
+
+  app.get("/", (req, res) => res.send("Server is running"));
+
   app.use(bodyParser.json());
 
   app.use("/", createA2ARoute(mastra));
